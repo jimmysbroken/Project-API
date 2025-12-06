@@ -1,0 +1,235 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.IdentityModel.Tokens;
+using Prometheus;
+using Microsoft.OpenApi.Models;
+using System.Data;
+using Microsoft.Data.SqlClient;
+using Dapper;
+using Minimalapi.JWT.Models;
+
+var builder = WebApplication.CreateBuilder(args);
+var configuration = builder.Configuration;
+
+// ----- Swagger ----- //
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Práctica 6 - JWT + Roles",
+        Version = "v1"
+    });
+
+    //Config para que Swagger permita enviar el JWT
+    var securityScheme = new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Description = "Escribe: Bearer {tu token JWT}",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    };
+    
+    options.AddSecurityDefinition("Bearer", securityScheme);
+
+    var securityRequirement = new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    };
+    options.AddSecurityRequirement(securityRequirement);
+});
+// IDbConnection para Dapper
+builder.Services.AddScoped<IDbConnection>(sp =>
+{
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var connectionString = configuration.GetConnectionString("DefaultConnection")
+                          ?? throw new InvalidOperationException("Missing connection string 'DefaultConnection'");
+    return new SqlConnection(connectionString);
+});
+// --- HealtChecks básicos --- //
+builder.Services.AddHealthChecks();
+
+// 1) Auth JWT
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        var key = Encoding.UTF8.GetBytes(configuration["Jwt:Key"]!);
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = configuration["Jwt:Issuer"],
+            ValidAudience = configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(key),
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+// 2) Roles / Policies
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy =>
+    {
+        policy.RequireRole("Admin");
+    });
+});
+
+// 3) Dependencias para usuarios
+builder.Services.AddScoped<DatabaseUserService>();
+var app = builder.Build();
+
+// --- Swwagger UI --- //
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseHttpsRedirection();
+
+// --- Prometheus metrics --- //
+app.UseHttpMetrics(); // mide las requests HTTP
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+// 4) Endpoint de login: POST /auth/login
+app.MapPost("/auth/login",
+    async (LoginRequest request, DatabaseUserService userService, IConfiguration config) =>
+    {
+        var usuario = await userService.FindByUsernameAsync(request.Username);
+
+        if (usuario is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        // Verificar contraseña (asumiendo que está en texto plano o usa tu método de verificación)
+        if (usuario.Passwd != request.Password)
+        {
+            return Results.Unauthorized();
+        }
+
+        // Crear User para JWT con roles por defecto
+        var user = new User(usuario.Id, usuario.Username, usuario.Passwd, new[] { "User" });
+        var token = JwtTokenService.GenerateJwtToken(user, config);
+
+        return Results.Ok(new LoginResponse(token));
+    }).WithTags("Auth");
+
+// 5) Endpoint público
+app.MapGet("/public/ping", () => Results.Ok("pong")).AllowAnonymous().WithTags("Public");
+
+// 6) Endpoint protegido (cualquier usuario autenticado)
+app.MapGet("/api/me", (ClaimsPrincipal user) =>
+{
+    var username = user.Identity ?.Name;
+    var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value);
+
+    return Results.Ok(new
+    {
+        username,
+        roles
+    });
+}).RequireAuthorization().WithTags("User");
+
+// 7) Endpoint protegido por rol Admin
+app.MapGet("/admin/secret", () =>
+{
+    return Results.Ok("Sólo los admins pueden ver esto.");
+}).RequireAuthorization("AdminOnly").WithTags("Admin");
+
+// 8) Endpoint para ver entorno
+app.MapGet("/environment", (IHostEnvironment env, IConfiguration cfg) =>
+{
+    return Results.Ok(new
+    {
+        Environment = env.EnvironmentName,
+        ApplicationName = env.ApplicationName,
+        MachineName = Environment.MachineName
+    });
+}).AllowAnonymous().WithTags("Info");
+
+// 9) HealthChecks
+app.MapHealthChecks("/health").WithTags("Health");
+
+// 10) Endpoint de métricas de Prometheus
+app.MapMetrics("/metrics").WithTags("Metrics");
+app.Run();
+
+// ======= TIPOS Y SERVICIOS ======== //
+record LoginRequest(string Username, string Password);
+record LoginResponse(string Accesstoken);
+
+// Modelo para la tabla usuarios existente
+public class Usuario
+{
+    public int Id { get; set; }
+    public string Username { get; set; } = string.Empty;
+    public string Passwd { get; set; } = string.Empty;
+}
+
+// Mantener User para JWT (con roles por defecto)
+public record User(int Id, string Username, string PasswordHash, string[] Roles);
+public class DatabaseUserService
+{
+    private readonly IDbConnection _connection;
+
+    public DatabaseUserService(IDbConnection connection)
+    {
+        _connection = connection;
+    }
+
+    public async Task<Usuario?> FindByUsernameAsync(string username)
+    {
+        const string sql = "SELECT id, username, passwd FROM usuarios WHERE username = @Username";
+        return await _connection.QueryFirstOrDefaultAsync<Usuario>(sql, new { Username = username });
+    }
+}
+
+public static class JwtTokenService
+{
+    public static string GenerateJwtToken(User user, IConfiguration configuration)
+    {
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["Jwt:Key"]!));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var claims = new List<Claim>
+        {
+            new(JwtRegisteredClaimNames.Sub, user.Username),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.Username)
+        };
+
+        foreach (var role in user.Roles)
+        {
+            claims.Add(new Claim(ClaimTypes.Role, role)); 
+        }
+
+        var token = new JwtSecurityToken(
+            configuration["Jwt:Issuer"],
+            configuration["Jwt:Audience"],
+            claims: claims,
+            expires: DateTime.UtcNow.AddMinutes(30),
+            signingCredentials: credentials
+        );
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+}

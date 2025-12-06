@@ -1,0 +1,103 @@
+# services:
+#   sqlserver:
+#     image: mcr.microsoft.com/mssql/server:2022-latest
+#     container_name: mssqlserver-developer-edition
+#     ports:
+#       - "1433:1433"
+#     environment:
+#       - ACCEPT_EULA=${ACCEPT_EULA}
+#       - MSSQL_PID=${MSSQL_PID}
+#       - SA_PASSWORD=${SA_PASSWORD}
+#     volumes:
+#       - sql-data:/var/opt/mssql
+#     restart: always
+
+#   seq:
+#     image: datalust/seq:latest
+#     container_name: seq
+#     restart: unless-stopped
+#     environment:
+#       ACCEPT_EULA: ${SEQ_ACCEPT_EULA}
+#       SEQ_FIRSTRUN_NOAUTHENTICATION: ${SEQ_FIRSTRUN_NOAUTHENTICATION}
+#       # Si quieres auth en Seq, descomenta esta:
+#       # SEQ_PASSWORD: ${SEQ_PASSWORD}
+#     volumes:
+#       - seq-data:/data
+#     ports:
+#       - "5341:80"
+#       - "5342:5341"
+
+#   uptime-kuma:
+#     image: louislam/uptime-kuma:2
+#     container_name: uptime-kuma
+#     restart: unless-stopped
+#     ports:
+#       - "3001:3001"   # UI
+#     volumes:
+#       - uptime-kuma-data:/app/data
+#       - /var/run/docker.sock:/var/run/docker.sock   # ← acceso al socket de Docker
+
+
+# volumes:
+#   sql-data:
+#   seq-data:
+#     name: seq-data
+#   uptime-kuma-data:
+
+#--
+
+
+services:
+
+  sqlserver:
+     image: mcr.microsoft.com/mssql/server:2022-latest
+     container_name: sqlserver-api-jwt
+     ports:
+       - "1434:1433"
+     environment:
+       - ACCEPT_EULA=Y
+       - MSSQL_PID=Express
+       - SA_PASSWORD=Jimmysbroken250904!
+     volumes:
+       - sql-data:/var/opt/mssql
+     restart: always
+     networks:
+     - mi-red-auth
+
+  uptime-kuma:
+     image: louislam/uptime-kuma:2
+     container_name: uptime-kuma
+     restart: unless-stopped
+     ports:
+       - "3001:3001"   # UI
+     volumes:
+       - uptime-kuma-data:/app/data
+       - /var/run/docker.sock:/var/run/docker.sock   # ← acceso al socket de Docker
+     networks:
+     - mi-red-auth
+
+  # 🔹 Tu API .NET 8
+  webapi:
+    build:
+      context: ..              # desde Docker/ -> sube a Repo-Guia
+      dockerfile: Dockerfile
+    container_name: WebAPI_JWT
+    restart: unless-stopped
+
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=API_JWT_DB;User ID=sa;Password=Jimmysbroken250904!;TrustServerCertificate=True;"
+    depends_on:
+    - sqlserver
+    ports:
+    - "8080:8080"
+    networks:
+     - mi-red-auth
+
+networks:
+  mi-red-auth:
+    external: true
+volumes:
+  sql-data:
+  uptime-kuma-data:
