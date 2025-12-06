@@ -127,8 +127,11 @@ app.MapPost("/auth/login",
             return Results.Unauthorized();
         }
 
-        // Crear User para JWT con roles por defecto
-        var user = new User(usuario.Id, usuario.Username, usuario.Passwd, new[] { "User" });
+        // DEBUG: Ver qué rol viene de la BD
+        Console.WriteLine($"DEBUG - Usuario: {usuario.Username}, Rol desde BD: '{usuario.Rol}'");
+
+        // Crear User para JWT con rol de la BD
+        var user = new User(usuario.Id, usuario.Username, usuario.Passwd, new[] { usuario.Rol });
         var token = JwtTokenService.GenerateJwtToken(user, config);
 
         return Results.Ok(new LoginResponse(token));
@@ -184,6 +187,7 @@ public class Usuario
     public int Id { get; set; }
     public string Username { get; set; } = string.Empty;
     public string Passwd { get; set; } = string.Empty;
+    public string Rol { get; set; } = string.Empty;
 }
 
 // Mantener User para JWT (con roles por defecto)
@@ -199,7 +203,7 @@ public class DatabaseUserService
 
     public async Task<Usuario?> FindByUsernameAsync(string username)
     {
-        const string sql = "SELECT id, username, passwd FROM usuarios WHERE username = @Username";
+        const string sql = "SELECT id, username, passwd, rol FROM usuarios WHERE username = @Username";
         return await _connection.QueryFirstOrDefaultAsync<Usuario>(sql, new { Username = username });
     }
 }
