@@ -69,7 +69,7 @@ services:
      container_name: uptime-kuma2
      restart: unless-stopped
      ports:
-       - "3001:3001"   # UI
+       - "3002:3001"   # UI
      volumes:
        - uptime-kuma-data:/app/data
        - /var/run/docker.sock:/var/run/docker.sock   # ← acceso al socket de Docker
