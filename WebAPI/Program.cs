@@ -10,6 +10,7 @@ using System.Data;
 using Microsoft.Data.SqlClient;
 using Dapper;
 using Minimalapi.JWT.Models;
+using Minimalapi.JWT.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
@@ -93,6 +94,7 @@ builder.Services.AddAuthorization(options =>
 
 // 3) Dependencias para usuarios
 builder.Services.AddScoped<DatabaseUserService>();
+builder.Services.AddScoped<ProductoService>();
 var app = builder.Build();
 
 // --- Swwagger UI --- //
@@ -127,9 +129,6 @@ app.MapPost("/auth/login",
             return Results.Unauthorized();
         }
 
-        // DEBUG: Ver qué rol viene de la BD
-        Console.WriteLine($"DEBUG - Usuario: {usuario.Username}, Rol desde BD: '{usuario.Rol}'");
-
         // Crear User para JWT con rol de la BD
         var user = new User(usuario.Id, usuario.Username, usuario.Passwd, new[] { usuario.Rol });
         var token = JwtTokenService.GenerateJwtToken(user, config);
@@ -158,6 +157,42 @@ app.MapGet("/admin/secret", () =>
 {
     return Results.Ok("Sólo los admins pueden ver esto.");
 }).RequireAuthorization("AdminOnly").WithTags("Admin");
+
+// Endpoints de Productos
+app.MapGet("/api/productos", async (ProductoService productoService) =>
+{
+    var productos = await productoService.GetAllAsync();
+    return Results.Ok(productos);
+}).RequireAuthorization().WithTags("Productos");
+
+// GET por ID
+app.MapGet("/api/productos/{id}", async (int id, ProductoService productoService) =>
+{
+    var producto = await productoService.GetByIdAsync(id);
+    return producto is not null ? Results.Ok(producto) : Results.NotFound();
+}).RequireAuthorization().WithTags("Productos");
+
+// POST - Crear producto (solo Admin)
+app.MapPost("/api/productos", async (ProductoDTO dto, ProductoService productoService) =>
+{
+    var id = await productoService.CreateAsync(dto);
+    return Results.Created($"/api/productos/{id}", new { id });
+}).RequireAuthorization("AdminOnly").WithTags("Productos");
+
+// PUT - Actualizar producto (solo Admin)
+app.MapPut("/api/productos/{id}", async (int id, ProductoDTO dto, ProductoService productoService) =>
+{
+    var updated = await productoService.UpdateAsync(id, dto);
+    return updated ? Results.NoContent() : Results.NotFound();
+}).RequireAuthorization("AdminOnly").WithTags("Productos");
+
+// DELETE - Eliminar producto (solo Admin)
+app.MapDelete("/api/productos/{id}", async (int id, ProductoService productoService) =>
+{
+    var deleted = await productoService.DeleteAsync(id);
+    return deleted ? Results.NoContent() : Results.NotFound();
+}).RequireAuthorization("AdminOnly").WithTags("Productos");
+
 
 // 8) Endpoint para ver entorno
 app.MapGet("/environment", (IHostEnvironment env, IConfiguration cfg) =>
@@ -224,7 +259,6 @@ public static class JwtTokenService
 
         foreach (var role in user.Roles)
         {
-            Console.WriteLine($"DEBUG - Agregando rol al token: '{role}'");
             claims.Add(new Claim(ClaimTypes.Role, role)); 
         }
 
