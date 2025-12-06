@@ -224,6 +224,7 @@ public static class JwtTokenService
 
         foreach (var role in user.Roles)
         {
+            Console.WriteLine($"DEBUG - Agregando rol al token: '{role}'");
             claims.Add(new Claim(ClaimTypes.Role, role)); 
         }
 
