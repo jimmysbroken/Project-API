@@ -31,4 +31,4 @@ jobs:
           file: Dockerfile       
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+            ${{ secrets.DOCKER_KEY_JIMMYSBROKEN }}/${{ env.IMAGE_NAME }}:latest
