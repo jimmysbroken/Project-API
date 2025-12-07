@@ -87,12 +87,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-<<<<<<< Updated upstream
-// Rate Limiter
-=======
-// RATE LIMITER (Configuración Correcta)
 
->>>>>>> Stashed changes
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
