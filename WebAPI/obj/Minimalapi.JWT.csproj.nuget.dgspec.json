@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\jjhzu\\OneDrive\\Documentos\\GitHub\\practica solo\\Minimalapi.JWT\\WebAPI\\Minimalapi.JWT.csproj": {}
+    "c:\\Users\\jjhzu\\OneDrive\\Documentos\\GitHub\\practica solo\\Minimalapi.JWT\\WebAPI\\Minimalapi.JWT.csproj": {}
   },
   "projects": {
-    "C:\\Users\\jjhzu\\OneDrive\\Documentos\\GitHub\\practica solo\\Minimalapi.JWT\\WebAPI\\Minimalapi.JWT.csproj": {
+    "c:\\Users\\jjhzu\\OneDrive\\Documentos\\GitHub\\practica solo\\Minimalapi.JWT\\WebAPI\\Minimalapi.JWT.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\jjhzu\\OneDrive\\Documentos\\GitHub\\practica solo\\Minimalapi.JWT\\WebAPI\\Minimalapi.JWT.csproj",
+        "projectUniqueName": "c:\\Users\\jjhzu\\OneDrive\\Documentos\\GitHub\\practica solo\\Minimalapi.JWT\\WebAPI\\Minimalapi.JWT.csproj",
         "projectName": "Minimalapi.JWT",
-        "projectPath": "C:\\Users\\jjhzu\\OneDrive\\Documentos\\GitHub\\practica solo\\Minimalapi.JWT\\WebAPI\\Minimalapi.JWT.csproj",
+        "projectPath": "c:\\Users\\jjhzu\\OneDrive\\Documentos\\GitHub\\practica solo\\Minimalapi.JWT\\WebAPI\\Minimalapi.JWT.csproj",
         "packagesPath": "C:\\Users\\jjhzu\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\jjhzu\\OneDrive\\Documentos\\GitHub\\practica solo\\Minimalapi.JWT\\WebAPI\\obj\\",
+        "outputPath": "c:\\Users\\jjhzu\\OneDrive\\Documentos\\GitHub\\practica solo\\Minimalapi.JWT\\WebAPI\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\jjhzu\\AppData\\Roaming\\NuGet\\NuGet.Config"
