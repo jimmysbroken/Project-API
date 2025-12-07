@@ -204,8 +204,11 @@ app.MapPost("/api/movimientos", async (
     MovimientoService movimientoService,
     ClaimsPrincipal user) =>
 {
-    // Obtener el ID del usuario del token JWT
-    var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    // Obtener el ID del usuario del token JWT (buscar el que sea numérico)
+    var userIdClaim = user.FindAll(ClaimTypes.NameIdentifier)
+        .Select(c => c.Value)
+        .FirstOrDefault(v => int.TryParse(v, out _));
+    
     if (userIdClaim == null || !int.TryParse(userIdClaim, out var usuarioId))
     {
         return Results.BadRequest(new { error = "Invalid user ID in token" });
