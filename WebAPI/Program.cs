@@ -143,13 +143,17 @@ app.MapGet("/public/ping", () => Results.Ok("pong")).AllowAnonymous().WithTags("
 // 6) Endpoint protegido (cualquier usuario autenticado)
 app.MapGet("/api/me", (ClaimsPrincipal user) =>
 {
-    var username = user.Identity ?.Name;
+    var username = user.Identity?.Name;
     var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value);
+    var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    var allClaims = user.Claims.Select(c => new { c.Type, c.Value });
 
     return Results.Ok(new
     {
         username,
-        roles
+        userId,
+        roles,
+        allClaims
     });
 }).RequireAuthorization().WithTags("User");
 
