@@ -125,11 +125,9 @@ builder.Services.AddAuthorization(options =>
 // 3) Dependencias para usuarios
 builder.Services.AddScoped<DatabaseUserService>();
 builder.Services.AddScoped<ProductoService>();
-<<<<<<< HEAD
 
-=======
+
 builder.Services.AddScoped<MovimientoService>();
->>>>>>> 530e00866c402211d6d478b5ae44729d2479c495
 var app = builder.Build();
 
 // --- Swagger UI --- //
