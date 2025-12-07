@@ -1,19 +1,20 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
 using Prometheus;
 using Microsoft.OpenApi.Models;
 using System.Data;
 using Microsoft.Data.SqlClient;
-using Dapper;
 using Minimalapi.JWT.Models;
 using Minimalapi.JWT.Services;
+using WebAPI.Services;
+using WebAPI.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
+
+// ----- Controllers ----- //
+builder.Services.AddControllers();
 
 // ----- Swagger ----- //
 builder.Services.AddEndpointsApiExplorer();
@@ -113,208 +114,13 @@ app.UseHttpMetrics(); // mide las requests HTTP
 app.UseAuthentication();
 app.UseAuthorization();
 
-// 4) Endpoint de login: POST /auth/login
-app.MapPost("/auth/login",
-    async (LoginRequest request, DatabaseUserService userService, IConfiguration config) =>
-    {
-        var usuario = await userService.FindByUsernameAsync(request.Username);
+// Mapear Controllers
+app.MapControllers();
 
-        if (usuario is null)
-        {
-            return Results.Unauthorized();
-        }
+// HealthChecks
+app.MapHealthChecks("/health");
 
-        // Verificar contraseña (asumiendo que está en texto plano o usa tu método de verificación)
-        if (usuario.Passwd != request.Password)
-        {
-            return Results.Unauthorized();
-        }
+// Métricas de Prometheus
+app.MapMetrics("/metrics");
 
-        // Crear User para JWT con rol de la BD
-        var user = new User(usuario.Id, usuario.Username, usuario.Passwd, new[] { usuario.Rol });
-        var token = JwtTokenService.GenerateJwtToken(user, config);
-
-        return Results.Ok(new LoginResponse(token));
-    }).WithTags("Auth");
-
-// 5) Endpoint público
-app.MapGet("/public/ping", () => Results.Ok("pong")).AllowAnonymous().WithTags("Public");
-
-// 6) Endpoint protegido (cualquier usuario autenticado)
-app.MapGet("/api/me", (ClaimsPrincipal user) =>
-{
-    var username = user.Identity?.Name;
-    var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value);
-    var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-    var allClaims = user.Claims.Select(c => new { c.Type, c.Value });
-
-    return Results.Ok(new
-    {
-        username,
-        userId,
-        roles,
-        allClaims
-    });
-}).RequireAuthorization().WithTags("User");
-
-// 7) Endpoint protegido por rol Admin
-app.MapGet("/admin/secret", () =>
-{
-    return Results.Ok("Sólo los admins pueden ver esto.");
-}).RequireAuthorization("AdminOnly").WithTags("Admin");
-
-// Endpoints de Productos
-app.MapGet("/api/productos", async (ProductoService productoService) =>
-{
-    var productos = await productoService.GetAllAsync();
-    return Results.Ok(productos);
-}).RequireAuthorization().WithTags("Productos");
-
-// GET por ID
-app.MapGet("/api/productos/{id}", async (int id, ProductoService productoService) =>
-{
-    var producto = await productoService.GetByIdAsync(id);
-    return producto is not null ? Results.Ok(producto) : Results.NotFound();
-}).RequireAuthorization().WithTags("Productos");
-
-// POST - Crear producto (solo Admin)
-app.MapPost("/api/productos", async (ProductoDTO dto, ProductoService productoService) =>
-{
-    var id = await productoService.CreateAsync(dto);
-    return Results.Created($"/api/productos/{id}", new { id });
-}).RequireAuthorization("AdminOnly").WithTags("Productos");
-
-// PUT - Actualizar producto (solo Admin)
-app.MapPut("/api/productos/{id}", async (int id, ProductoDTO dto, ProductoService productoService) =>
-{
-    var updated = await productoService.UpdateAsync(id, dto);
-    return updated ? Results.NoContent() : Results.NotFound();
-}).RequireAuthorization("AdminOnly").WithTags("Productos");
-
-// DELETE - Eliminar producto (solo Admin)
-app.MapDelete("/api/productos/{id}", async (int id, ProductoService productoService) =>
-{
-    var deleted = await productoService.DeleteAsync(id);
-    return deleted ? Results.NoContent() : Results.NotFound();
-}).RequireAuthorization("AdminOnly").WithTags("Productos");
-
-// Endpoints de Movimientos
-app.MapPost("/api/movimientos", async (
-    RegistrarMovimientoDTO dto, 
-    MovimientoService movimientoService,
-    ClaimsPrincipal user) =>
-{
-    // Obtener el ID del usuario del token JWT (buscar el que sea numérico)
-    var userIdClaim = user.FindAll(ClaimTypes.NameIdentifier)
-        .Select(c => c.Value)
-        .FirstOrDefault(v => int.TryParse(v, out _));
-    
-    if (userIdClaim == null || !int.TryParse(userIdClaim, out var usuarioId))
-    {
-        return Results.BadRequest(new { error = "Invalid user ID in token" });
-    }
-    
-    var movimientoId = await movimientoService.RegistrarMovimientoAsync(dto, usuarioId);
-    
-    return Results.Created($"/api/movimientos/{movimientoId}", new { id = movimientoId });
-}).RequireAuthorization().WithTags("Movimientos");
-
-// GET todos los movimientos
-app.MapGet("/api/movimientos", async (MovimientoService movimientoService) =>
-{
-    var movimientos = await movimientoService.GetAllAsync();
-    return Results.Ok(movimientos);
-}).RequireAuthorization().WithTags("Movimientos");
-
-// GET movimiento por ID
-app.MapGet("/api/movimientos/{id}", async (int id, MovimientoService movimientoService) =>
-{
-    var movimiento = await movimientoService.GetByIdAsync(id);
-    return movimiento is not null ? Results.Ok(movimiento) : Results.NotFound();
-}).RequireAuthorization().WithTags("Movimientos");
-
-// GET detalles de un movimiento
-app.MapGet("/api/movimientos/{id}/detalles", async (int id, MovimientoService movimientoService) =>
-{
-    var detalles = await movimientoService.GetDetallesAsync(id);
-    return Results.Ok(detalles);
-}).RequireAuthorization().WithTags("Movimientos");
-
-// 8) Endpoint para ver entorno
-app.MapGet("/environment", (IHostEnvironment env, IConfiguration cfg) =>
-{
-    return Results.Ok(new
-    {
-        Environment = env.EnvironmentName,
-        ApplicationName = env.ApplicationName,
-        MachineName = Environment.MachineName
-    });
-}).AllowAnonymous().WithTags("Info");
-
-// 9) HealthChecks
-app.MapHealthChecks("/health").WithTags("Health");
-
-// 10) Endpoint de métricas de Prometheus
-app.MapMetrics("/metrics").WithTags("Metrics");
 app.Run();
-
-// ======= TIPOS Y SERVICIOS ======== //
-record LoginRequest(string Username, string Password);
-record LoginResponse(string Accesstoken);
-
-// Modelo para la tabla usuarios existente
-public class Usuario
-{
-    public int Id { get; set; }
-    public string Username { get; set; } = string.Empty;
-    public string Passwd { get; set; } = string.Empty;
-    public string Rol { get; set; } = string.Empty;
-}
-
-// Mantener User para JWT (con roles por defecto)
-public record User(int Id, string Username, string PasswordHash, string[] Roles);
-public class DatabaseUserService
-{
-    private readonly IDbConnection _connection;
-
-    public DatabaseUserService(IDbConnection connection)
-    {
-        _connection = connection;
-    }
-
-    public async Task<Usuario?> FindByUsernameAsync(string username)
-    {
-        const string sql = "SELECT id, username, passwd, rol FROM usuarios WHERE username = @Username";
-        return await _connection.QueryFirstOrDefaultAsync<Usuario>(sql, new { Username = username });
-    }
-}
-
-public static class JwtTokenService
-{
-    public static string GenerateJwtToken(User user, IConfiguration configuration)
-    {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["Jwt:Key"]!));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        var claims = new List<Claim>
-        {
-            new(JwtRegisteredClaimNames.Sub, user.Username),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Name, user.Username)
-        };
-
-        foreach (var role in user.Roles)
-        {
-            claims.Add(new Claim(ClaimTypes.Role, role)); 
-        }
-
-        var token = new JwtSecurityToken(
-            configuration["Jwt:Issuer"],
-            configuration["Jwt:Audience"],
-            claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(30),
-            signingCredentials: credentials
-        );
-        return new JwtSecurityTokenHandler().WriteToken(token);
-    }
-}
