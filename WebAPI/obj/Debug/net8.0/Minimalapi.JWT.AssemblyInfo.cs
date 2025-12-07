@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Minimalapi.JWT")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8fb9991128866053463cb464186f9641fb1ceb91")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a73e67f9f8a62ee6a9b3c617b3feed1d66bfbc5b")]
 [assembly: System.Reflection.AssemblyProductAttribute("Minimalapi.JWT")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Minimalapi.JWT")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

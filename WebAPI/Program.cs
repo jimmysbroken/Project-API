@@ -125,7 +125,11 @@ builder.Services.AddAuthorization(options =>
 // 3) Dependencias para usuarios
 builder.Services.AddScoped<DatabaseUserService>();
 builder.Services.AddScoped<ProductoService>();
+<<<<<<< HEAD
 
+=======
+builder.Services.AddScoped<MovimientoService>();
+>>>>>>> 530e00866c402211d6d478b5ae44729d2479c495
 var app = builder.Build();
 
 // --- Swagger UI --- //
@@ -181,11 +185,15 @@ app.MapGet("/api/me", (ClaimsPrincipal user) =>
 {
     var username = user.Identity?.Name;
     var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value);
+    var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    var allClaims = user.Claims.Select(c => new { c.Type, c.Value });
 
     return Results.Ok(new
     {
         username,
-        roles
+        userId,
+        roles,
+        allClaims
     });
 })
 .RequireRateLimiting("fixed")
@@ -253,6 +261,47 @@ app.MapDelete("/api/productos/{id}", async (int id, ProductoService productoServ
 .RequireAuthorization("AdminOnly")
 .WithTags("Productos");
 
+// Endpoints de Movimientos
+app.MapPost("/api/movimientos", async (
+    RegistrarMovimientoDTO dto, 
+    MovimientoService movimientoService,
+    ClaimsPrincipal user) =>
+{
+    // Obtener el ID del usuario del token JWT (buscar el que sea numérico)
+    var userIdClaim = user.FindAll(ClaimTypes.NameIdentifier)
+        .Select(c => c.Value)
+        .FirstOrDefault(v => int.TryParse(v, out _));
+    
+    if (userIdClaim == null || !int.TryParse(userIdClaim, out var usuarioId))
+    {
+        return Results.BadRequest(new { error = "Invalid user ID in token" });
+    }
+    
+    var movimientoId = await movimientoService.RegistrarMovimientoAsync(dto, usuarioId);
+    
+    return Results.Created($"/api/movimientos/{movimientoId}", new { id = movimientoId });
+}).RequireAuthorization().WithTags("Movimientos");
+
+// GET todos los movimientos
+app.MapGet("/api/movimientos", async (MovimientoService movimientoService) =>
+{
+    var movimientos = await movimientoService.GetAllAsync();
+    return Results.Ok(movimientos);
+}).RequireAuthorization().WithTags("Movimientos");
+
+// GET movimiento por ID
+app.MapGet("/api/movimientos/{id}", async (int id, MovimientoService movimientoService) =>
+{
+    var movimiento = await movimientoService.GetByIdAsync(id);
+    return movimiento is not null ? Results.Ok(movimiento) : Results.NotFound();
+}).RequireAuthorization().WithTags("Movimientos");
+
+// GET detalles de un movimiento
+app.MapGet("/api/movimientos/{id}/detalles", async (int id, MovimientoService movimientoService) =>
+{
+    var detalles = await movimientoService.GetDetallesAsync(id);
+    return Results.Ok(detalles);
+}).RequireAuthorization().WithTags("Movimientos");
 
 // 8) Endpoint para ver entorno
 app.MapGet("/environment", (IHostEnvironment env, IConfiguration cfg) =>
