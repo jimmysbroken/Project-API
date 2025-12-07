@@ -95,6 +95,7 @@ builder.Services.AddAuthorization(options =>
 // 3) Dependencias para usuarios
 builder.Services.AddScoped<DatabaseUserService>();
 builder.Services.AddScoped<ProductoService>();
+builder.Services.AddScoped<MovimientoService>();
 var app = builder.Build();
 
 // --- Swwagger UI --- //
@@ -193,6 +194,42 @@ app.MapDelete("/api/productos/{id}", async (int id, ProductoService productoServ
     return deleted ? Results.NoContent() : Results.NotFound();
 }).RequireAuthorization("AdminOnly").WithTags("Productos");
 
+// Endpoints de Movimientos
+app.MapPost("/api/movimientos", async (
+    RegistrarMovimientoDTO dto, 
+    MovimientoService movimientoService,
+    ClaimsPrincipal user) =>
+{
+    // Obtener el ID del usuario del token JWT
+    var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    if (userIdClaim == null) return Results.Unauthorized();
+    
+    var usuarioId = int.Parse(userIdClaim);
+    var movimientoId = await movimientoService.RegistrarMovimientoAsync(dto, usuarioId);
+    
+    return Results.Created($"/api/movimientos/{movimientoId}", new { id = movimientoId });
+}).RequireAuthorization().WithTags("Movimientos");
+
+// GET todos los movimientos
+app.MapGet("/api/movimientos", async (MovimientoService movimientoService) =>
+{
+    var movimientos = await movimientoService.GetAllAsync();
+    return Results.Ok(movimientos);
+}).RequireAuthorization().WithTags("Movimientos");
+
+// GET movimiento por ID
+app.MapGet("/api/movimientos/{id}", async (int id, MovimientoService movimientoService) =>
+{
+    var movimiento = await movimientoService.GetByIdAsync(id);
+    return movimiento is not null ? Results.Ok(movimiento) : Results.NotFound();
+}).RequireAuthorization().WithTags("Movimientos");
+
+// GET detalles de un movimiento
+app.MapGet("/api/movimientos/{id}/detalles", async (int id, MovimientoService movimientoService) =>
+{
+    var detalles = await movimientoService.GetDetallesAsync(id);
+    return Results.Ok(detalles);
+}).RequireAuthorization().WithTags("Movimientos");
 
 // 8) Endpoint para ver entorno
 app.MapGet("/environment", (IHostEnvironment env, IConfiguration cfg) =>
