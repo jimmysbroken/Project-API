@@ -202,9 +202,11 @@ app.MapPost("/api/movimientos", async (
 {
     // Obtener el ID del usuario del token JWT
     var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-    if (userIdClaim == null) return Results.Unauthorized();
+    if (userIdClaim == null || !int.TryParse(userIdClaim, out var usuarioId))
+    {
+        return Results.BadRequest(new { error = "Invalid user ID in token" });
+    }
     
-    var usuarioId = int.Parse(userIdClaim);
     var movimientoId = await movimientoService.RegistrarMovimientoAsync(dto, usuarioId);
     
     return Results.Created($"/api/movimientos/{movimientoId}", new { id = movimientoId });
