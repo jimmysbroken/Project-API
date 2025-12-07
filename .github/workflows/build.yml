@@ -1,0 +1,30 @@
+name: CI - Build .NET
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: WebAPI # Corregido: Tu código está aquí
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore Minimalapi.JWT.csproj # Corregido: Nombre real de tu csproj
+
+      - name: Build
+        run: dotnet build Minimalapi.JWT.csproj --configuration Release --no-restore
