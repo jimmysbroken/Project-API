@@ -5152,24 +5152,31 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\jjhzu\\.nuget\\packages\\": {}
+    "C:\\Users\\Scarlett\\.nuget\\packages\\": {},
+    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\jjhzu\\OneDrive\\Documentos\\GitHub\\practica solo\\Minimalapi.JWT\\WebAPI\\Minimalapi.JWT.csproj",
+      "projectUniqueName": "C:\\Users\\Scarlett\\Documents\\GitHub\\Project-API\\WebAPI\\Minimalapi.JWT.csproj",
       "projectName": "Minimalapi.JWT",
-      "projectPath": "C:\\Users\\jjhzu\\OneDrive\\Documentos\\GitHub\\practica solo\\Minimalapi.JWT\\WebAPI\\Minimalapi.JWT.csproj",
-      "packagesPath": "C:\\Users\\jjhzu\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\jjhzu\\OneDrive\\Documentos\\GitHub\\practica solo\\Minimalapi.JWT\\WebAPI\\obj\\",
+      "projectPath": "C:\\Users\\Scarlett\\Documents\\GitHub\\Project-API\\WebAPI\\Minimalapi.JWT.csproj",
+      "packagesPath": "C:\\Users\\Scarlett\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\Scarlett\\Documents\\GitHub\\Project-API\\WebAPI\\obj\\",
       "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+      ],
       "configFilePaths": [
-        "C:\\Users\\jjhzu\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        "C:\\Users\\Scarlett\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
       "originalTargetFrameworks": [
         "net8.0"
       ],
       "sources": {
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
@@ -5248,7 +5255,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.308/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.305/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

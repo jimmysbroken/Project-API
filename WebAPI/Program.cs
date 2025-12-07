@@ -9,8 +9,10 @@ using Microsoft.OpenApi.Models;
 using System.Data;
 using Microsoft.Data.SqlClient;
 using Dapper;
-using Minimalapi.JWT.Models;
-using Minimalapi.JWT.Services;
+using Minimalapi.JWT.Models;   // Asegúrate de que estos namespaces existan en tu proyecto
+using Minimalapi.JWT.Services; // Asegúrate de que estos namespaces existan en tu proyecto
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
@@ -25,7 +27,6 @@ builder.Services.AddSwaggerGen(options =>
         Version = "v1"
     });
 
-    //Config para que Swagger permita enviar el JWT
     var securityScheme = new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -54,15 +55,17 @@ builder.Services.AddSwaggerGen(options =>
     };
     options.AddSecurityRequirement(securityRequirement);
 });
+
 // IDbConnection para Dapper
 builder.Services.AddScoped<IDbConnection>(sp =>
 {
     var configuration = sp.GetRequiredService<IConfiguration>();
     var connectionString = configuration.GetConnectionString("DefaultConnection")
-                          ?? throw new InvalidOperationException("Missing connection string 'DefaultConnection'");
+                           ?? throw new InvalidOperationException("Missing connection string 'DefaultConnection'");
     return new SqlConnection(connectionString);
 });
-// --- HealtChecks básicos --- //
+
+// --- HealthChecks básicos --- //
 builder.Services.AddHealthChecks();
 
 // 1) Auth JWT
@@ -83,6 +86,33 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
+// RATE LIMITER (Configuración Correcta)
+// --- BORRA EL BLOQUE ANTERIOR DE AddRateLimiter Y PEGA ESTE ---
+
+builder.Services.AddRateLimiter(options =>
+{
+    // Código de error cuando te bloquean (429)
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // DEFINIR UN LÍMITE GLOBAL PARTICIONADO POR IP
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        // Obtener la IP del cliente (si es localhost puede ser ::1 o 127.0.0.1)
+        var userIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+        // Crear una partición (regla) única para esa IP
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: userIp,
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,       // Máximo 10 peticiones...
+                Window = TimeSpan.FromSeconds(10), // ...cada 10 segundos
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0 // No dejar a nadie en espera, rechazar directo
+            });
+    });
+});
+
 // 2) Roles / Policies
 builder.Services.AddAuthorization(options =>
 {
@@ -95,9 +125,10 @@ builder.Services.AddAuthorization(options =>
 // 3) Dependencias para usuarios
 builder.Services.AddScoped<DatabaseUserService>();
 builder.Services.AddScoped<ProductoService>();
+
 var app = builder.Build();
 
-// --- Swwagger UI --- //
+// --- Swagger UI --- //
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -107,42 +138,48 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 // --- Prometheus metrics --- //
-app.UseHttpMetrics(); // mide las requests HTTP
+app.UseHttpMetrics(); 
 
 app.UseAuthentication();
 app.UseAuthorization();
 
+// IMPORTANTE: Activar el middleware de Rate Limiting antes de los endpoints
+app.UseRateLimiter(); 
+
 // 4) Endpoint de login: POST /auth/login
-app.MapPost("/auth/login",
-    async (LoginRequest request, DatabaseUserService userService, IConfiguration config) =>
+// CORRECCIÓN: .RequireRateLimiting va AL FINAL
+app.MapPost("/auth/login", async (LoginRequest request, DatabaseUserService userService, IConfiguration config) =>
+{
+    var usuario = await userService.FindByUsernameAsync(request.Username);
+
+    if (usuario is null)
     {
-        var usuario = await userService.FindByUsernameAsync(request.Username);
+        return Results.Unauthorized();
+    }
 
-        if (usuario is null)
-        {
-            return Results.Unauthorized();
-        }
+    if (usuario.Passwd != request.Password)
+    {
+        return Results.Unauthorized();
+    }
 
-        // Verificar contraseña (asumiendo que está en texto plano o usa tu método de verificación)
-        if (usuario.Passwd != request.Password)
-        {
-            return Results.Unauthorized();
-        }
+    var user = new User(usuario.Id, usuario.Username, usuario.Passwd, new[] { usuario.Rol });
+    var token = JwtTokenService.GenerateJwtToken(user, config);
 
-        // Crear User para JWT con rol de la BD
-        var user = new User(usuario.Id, usuario.Username, usuario.Passwd, new[] { usuario.Rol });
-        var token = JwtTokenService.GenerateJwtToken(user, config);
-
-        return Results.Ok(new LoginResponse(token));
-    }).WithTags("Auth");
+    return Results.Ok(new LoginResponse(token));
+})
+.RequireRateLimiting("fixed") // <--- AQUÍ VA
+.WithTags("Auth");
 
 // 5) Endpoint público
-app.MapGet("/public/ping", () => Results.Ok("pong")).AllowAnonymous().WithTags("Public");
+app.MapGet("/public/ping", () => Results.Ok("pong"))
+   .RequireRateLimiting("fixed")
+   .AllowAnonymous()
+   .WithTags("Public");
 
 // 6) Endpoint protegido (cualquier usuario autenticado)
 app.MapGet("/api/me", (ClaimsPrincipal user) =>
 {
-    var username = user.Identity ?.Name;
+    var username = user.Identity?.Name;
     var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value);
 
     return Results.Ok(new
@@ -150,48 +187,71 @@ app.MapGet("/api/me", (ClaimsPrincipal user) =>
         username,
         roles
     });
-}).RequireAuthorization().WithTags("User");
+})
+.RequireRateLimiting("fixed")
+.RequireAuthorization()
+.WithTags("User");
 
 // 7) Endpoint protegido por rol Admin
 app.MapGet("/admin/secret", () =>
 {
     return Results.Ok("Sólo los admins pueden ver esto.");
-}).RequireAuthorization("AdminOnly").WithTags("Admin");
+})
+.RequireRateLimiting("fixed")
+.RequireAuthorization("AdminOnly")
+.WithTags("Admin");
 
-// Endpoints de Productos
+// --- ENDPOINTS DE PRODUCTOS ---
+
+// GET All
 app.MapGet("/api/productos", async (ProductoService productoService) =>
 {
     var productos = await productoService.GetAllAsync();
     return Results.Ok(productos);
-}).RequireAuthorization().WithTags("Productos");
+})
+.RequireRateLimiting("fixed")
+.RequireAuthorization()
+.WithTags("Productos");
 
 // GET por ID
 app.MapGet("/api/productos/{id}", async (int id, ProductoService productoService) =>
 {
     var producto = await productoService.GetByIdAsync(id);
     return producto is not null ? Results.Ok(producto) : Results.NotFound();
-}).RequireAuthorization().WithTags("Productos");
+})
+.RequireRateLimiting("fixed")
+.RequireAuthorization()
+.WithTags("Productos");
 
 // POST - Crear producto (solo Admin)
 app.MapPost("/api/productos", async (ProductoDTO dto, ProductoService productoService) =>
 {
     var id = await productoService.CreateAsync(dto);
     return Results.Created($"/api/productos/{id}", new { id });
-}).RequireAuthorization("AdminOnly").WithTags("Productos");
+})
+.RequireRateLimiting("fixed")
+.RequireAuthorization("AdminOnly")
+.WithTags("Productos");
 
 // PUT - Actualizar producto (solo Admin)
 app.MapPut("/api/productos/{id}", async (int id, ProductoDTO dto, ProductoService productoService) =>
 {
     var updated = await productoService.UpdateAsync(id, dto);
     return updated ? Results.NoContent() : Results.NotFound();
-}).RequireAuthorization("AdminOnly").WithTags("Productos");
+})
+.RequireRateLimiting("fixed")
+.RequireAuthorization("AdminOnly")
+.WithTags("Productos");
 
 // DELETE - Eliminar producto (solo Admin)
 app.MapDelete("/api/productos/{id}", async (int id, ProductoService productoService) =>
 {
     var deleted = await productoService.DeleteAsync(id);
     return deleted ? Results.NoContent() : Results.NotFound();
-}).RequireAuthorization("AdminOnly").WithTags("Productos");
+})
+.RequireRateLimiting("fixed")
+.RequireAuthorization("AdminOnly")
+.WithTags("Productos");
 
 
 // 8) Endpoint para ver entorno
@@ -203,18 +263,27 @@ app.MapGet("/environment", (IHostEnvironment env, IConfiguration cfg) =>
         ApplicationName = env.ApplicationName,
         MachineName = Environment.MachineName
     });
-}).AllowAnonymous().WithTags("Info");
+})
+.RequireRateLimiting("fixed")
+.AllowAnonymous()
+.WithTags("Info");
 
 // 9) HealthChecks
-app.MapHealthChecks("/health").WithTags("Health");
+app.MapHealthChecks("/health")
+   .RequireRateLimiting("fixed")
+   .WithTags("Health");
 
 // 10) Endpoint de métricas de Prometheus
-app.MapMetrics("/metrics").WithTags("Metrics");
+app.MapMetrics("/metrics")
+   .WithTags("Metrics");
+
 app.Run();
 
 // ======= TIPOS Y SERVICIOS ======== //
-record LoginRequest(string Username, string Password);
-record LoginResponse(string Accesstoken);
+
+// DTOs básicos
+public record LoginRequest(string Username, string Password);
+public record LoginResponse(string Accesstoken);
 
 // Modelo para la tabla usuarios existente
 public class Usuario
@@ -225,8 +294,10 @@ public class Usuario
     public string Rol { get; set; } = string.Empty;
 }
 
-// Mantener User para JWT (con roles por defecto)
+// User para JWT
 public record User(int Id, string Username, string PasswordHash, string[] Roles);
+
+// Servicio de Usuario
 public class DatabaseUserService
 {
     private readonly IDbConnection _connection;
@@ -243,6 +314,7 @@ public class DatabaseUserService
     }
 }
 
+// Servicio JWT
 public static class JwtTokenService
 {
     public static string GenerateJwtToken(User user, IConfiguration configuration)
