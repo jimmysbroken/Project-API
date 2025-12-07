@@ -12,7 +12,7 @@ Fragmento de código
 
 graph TD
     Client[Cliente / Frontend / Postman] -->|HTTPS| Proxy[Remote.it / Internet]
-    Proxy -->|Port 8081| API[API .NET 8 Container]
+    Proxy -->|Port ****| API[API .NET 8 Container]
     
     subgraph Docker Network [Red Privada Docker]
         API -->|Port 8080 Internal| API_Process[.NET Process]
@@ -109,7 +109,8 @@ Project-API/
 │   └── Program.cs                # Endpoints y Configuración DI
 ├── Dockerfile                    # Instrucciones de construcción de imagen
 └── README.md                     # Documentación Técnica
-🚀 Despliegue (Pipeline CI/CD)
+
+   Despliegue (Pipeline CI/CD)
 El proyecto cuenta con un sistema de Despliegue Continuo automatizado:
 
 Trigger: Al hacer un git push a la rama main.
@@ -136,7 +137,7 @@ docker build -t project-api:latest .
 
 # Correr contenedor conectado a la red y BD (Mapeando 8081 externo a 8080 interno)
 docker run -d \
-  -p 8081:8080 \
+  -p ****:**** \
   --name api-container \
   --network mi-red-auth \
   -e "ConnectionStrings:DefaultConnection=Server=sqlserver;Database=AuthDb;..." \
