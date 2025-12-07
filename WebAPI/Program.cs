@@ -9,6 +9,8 @@ using Minimalapi.JWT.Models;
 using Minimalapi.JWT.Services;
 using WebAPI.Services;
 using WebAPI.Models;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
@@ -26,7 +28,6 @@ builder.Services.AddSwaggerGen(options =>
         Version = "v1"
     });
 
-    //Config para que Swagger permita enviar el JWT
     var securityScheme = new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -55,15 +56,17 @@ builder.Services.AddSwaggerGen(options =>
     };
     options.AddSecurityRequirement(securityRequirement);
 });
+
 // IDbConnection para Dapper
 builder.Services.AddScoped<IDbConnection>(sp =>
 {
     var configuration = sp.GetRequiredService<IConfiguration>();
     var connectionString = configuration.GetConnectionString("DefaultConnection")
-                          ?? throw new InvalidOperationException("Missing connection string 'DefaultConnection'");
+                           ?? throw new InvalidOperationException("Missing connection string 'DefaultConnection'");
     return new SqlConnection(connectionString);
 });
-// --- HealtChecks básicos --- //
+
+// --- HealthChecks básicos --- //
 builder.Services.AddHealthChecks();
 
 // 1) Auth JWT
@@ -84,6 +87,27 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
+// Rate Limiter
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var userIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: userIp,
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromSeconds(10),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            });
+    });
+});
+
 // 2) Roles / Policies
 builder.Services.AddAuthorization(options =>
 {
@@ -97,9 +121,10 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddScoped<DatabaseUserService>();
 builder.Services.AddScoped<ProductoService>();
 builder.Services.AddScoped<MovimientoService>();
+
 var app = builder.Build();
 
-// --- Swwagger UI --- //
+// --- Swagger UI --- //
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -109,10 +134,13 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 // --- Prometheus metrics --- //
-app.UseHttpMetrics(); // mide las requests HTTP
+app.UseHttpMetrics();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Activar Rate Limiting
+app.UseRateLimiter();
 
 // Mapear Controllers
 app.MapControllers();
